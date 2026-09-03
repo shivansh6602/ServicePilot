@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Role Enum
+enum Role {
+  OWNER
+  TECHNICIAN
+}
+
+// Job Status State Machine Enum
+enum JobStatus {
+  UNASSIGNED
+  ASSIGNED
+  ON_THE_WAY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Business Entity (The Tenant)
+model Business {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  customers Customer[]
+  jobs      Job[]
+}
+
+// User Account Entity (Owners and Technicians)
+model User {
+  id           String   @id @default(uuid())
+  businessId   String
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  jobs     Job[]    @relation("TechnicianJobs")
+}
+
+// Customer Entity (Scoped to Business Tenant)
+model Customer {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  phone      String
+  email      String?
+  address    String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  jobs     Job[]
+
+  // Prevent duplicate phone numbers per business tenant
+  @@unique([businessId, phone])
+}
+
+// Job Entity (Central Workflow Entity)
+model Job {
+  id                 String    @id @default(uuid())
+  businessId         String
+  customerId         String
+  technicianId       String?
+  status             JobStatus @default(UNASSIGNED)
+  problemDescription String
+  scheduledAt        DateTime?
+  serviceCharge      Float     @default(0.0)
+  discount           Float     @default(0.0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  technician User?     @relation("TechnicianJobs", fields: [technicianId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([status])
+  @@index([technicianId])
+}
