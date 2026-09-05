@@ -7,23 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User Role Enum
 enum Role {
   OWNER
   TECHNICIAN
 }
 
-// Job Status State Machine Enum
 enum JobStatus {
-  UNASSIGNED
+  REQUESTED
   ASSIGNED
   ON_THE_WAY
   IN_PROGRESS
   COMPLETED
+  CONFIRMED
+  PAID
   CANCELLED
 }
 
-// Business Entity (The Tenant)
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE
+  OTHER
+}
+
 model Business {
   id        String   @id @default(uuid())
   name      String
@@ -35,7 +41,6 @@ model Business {
   jobs      Job[]
 }
 
-// User Account Entity (Owners and Technicians)
 model User {
   id           String   @id @default(uuid())
   businessId   String
@@ -46,11 +51,15 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  jobs     Job[]    @relation("TechnicianJobs")
+  business      Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  assignedJobs  Job[]              @relation("TechnicianJobs")
+  statusChanges JobStatusHistory[]
+  uploadedPhotos JobPhoto[]
+
+  // Scoped index for tenant user lookups
+  @@index([businessId])
 }
 
-// Customer Entity (Scoped to Business Tenant)
 model Customer {
   id         String   @id @default(uuid())
   businessId String
@@ -65,17 +74,17 @@ model Customer {
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   jobs     Job[]
 
-  // Prevent duplicate phone numbers per business tenant
+  // Composite unique constraint: scoped phone uniqueness per business tenant
   @@unique([businessId, phone])
+  @@index([businessId])
 }
 
-// Job Entity (Central Workflow Entity)
 model Job {
   id                 String    @id @default(uuid())
   businessId         String
   customerId         String
   technicianId       String?
-  status             JobStatus @default(UNASSIGNED)
+  status             JobStatus @default(REQUESTED)
   problemDescription String
   scheduledAt        DateTime?
   serviceCharge      Float     @default(0.0)
@@ -87,7 +96,113 @@ model Job {
   customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   technician User?     @relation("TechnicianJobs", fields: [technicianId], references: [id], onDelete: SetNull)
 
+  statusHistory JobStatusHistory[]
+  parts         JobPart[]
+  charges       JobCharge[]
+  payments      Payment[]
+  photos        JobPhoto[]
+  review        Review?
+  tip           Tip?
+  signature     Signature?
+
   @@index([businessId])
   @@index([status])
   @@index([technicianId])
+  @@index([customerId])
+}
+
+model JobStatusHistory {
+  id          String     @id @default(uuid())
+  jobId       String
+  fromStatus  JobStatus?
+  toStatus    JobStatus
+  reason      String?
+  changedById String?
+  createdAt   DateTime   @default(now())
+
+  job       Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  changedBy User? @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+}
+
+model JobPart {
+  id        String   @id @default(uuid())
+  jobId     String
+  name      String
+  quantity  Int      @default(1)
+  unitCost  Float    @default(0.0)
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model JobCharge {
+  id        String   @id @default(uuid())
+  jobId     String
+  title     String
+  amount    Float    @default(0.0)
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  jobId         String
+  amount        Float
+  paymentMethod PaymentMethod @default(CASH)
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  jobId     String   @unique
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Tip {
+  id        String   @id @default(uuid())
+  jobId     String   @unique
+  amount    Float
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model JobPhoto {
+  id           String   @id @default(uuid())
+  jobId        String
+  photoUrl     String
+  caption      String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  job        Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+}
+
+model Signature {
+  id           String   @id @default(uuid())
+  jobId        String   @unique
+  signatureUrl String
+  signerName   String
+  signedAt     DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
