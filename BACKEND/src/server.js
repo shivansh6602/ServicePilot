@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import prisma from './config/prisma.js';
+import authRoutes from './routes/auth.routes.js';
 
 // Load environment variables from .env
 dotenv.config();
@@ -12,6 +13,9 @@ const PORT = process.env.PORT || 4000;
 // Standard middleware
 app.use(cors());
 app.use(express.json());
+
+// API Routes
+app.use('/api/auth', authRoutes);
 
 // Health Check Endpoint (Verifies server and database connection)
 app.get('/health', async (req, res) => {
