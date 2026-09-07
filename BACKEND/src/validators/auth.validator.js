@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-/**
- * Zod validation schema for new Business Tenant Registration.
- * Validates business metadata and the primary owner account credentials.
- */
+
 export const registerTenantSchema = z.object({
   businessName: z
     .string({ required_error: 'Business name is required' })
@@ -21,11 +18,15 @@ export const registerTenantSchema = z.object({
   password: z
     .string({ required_error: 'Password is required' })
     .min(8, 'Password must be at least 8 characters long'),
+  profilePhotoUrl: z
+    .string()
+    .trim()
+    .url('Invalid URL format for profile photo')
+    .optional()
+    .or(z.literal('')),
 });
 
-/**
- * Zod validation schema for User Authentication (Login).
- */
+
 export const loginSchema = z.object({
   email: z
     .string({ required_error: 'Email address is required' })
