@@ -1,9 +1,5 @@
 import jwt from 'jsonwebtoken';
 
-/**
- * Authentication Middleware: Verifies JWT signature and injects authenticated user context
- * (req.user = { userId, businessId, role }) into the request pipeline.
- */
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -15,12 +11,12 @@ export const authenticateToken = (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
 
   try {
     const decoded = jwt.verify(token, secret);
-    
-    // Attach cryptographically verified user & tenant payload to request
+
+
     req.user = {
       userId: decoded.userId,
       businessId: decoded.businessId,
@@ -43,10 +39,7 @@ export const authenticateToken = (req, res, next) => {
   }
 };
 
-/**
- * Authorization Middleware: Enforces Role-Based Access Control (RBAC).
- * @param {...string} allowedRoles - List of roles permitted to access the route (e.g. 'OWNER')
- */
+
 export const requireRole = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
