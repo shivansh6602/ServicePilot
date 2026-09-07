@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import prisma from './config/prisma.js';
 import authRoutes from './routes/auth.routes.js';
@@ -13,6 +14,7 @@ const PORT = process.env.PORT || 4000;
 // Standard middleware
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 // API Routes
 app.use('/api/auth', authRoutes);
