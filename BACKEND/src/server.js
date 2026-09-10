@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import prisma from './config/prisma.js';
 import authRoutes from './routes/auth.routes.js';
+import customerRoutes from './routes/customer.routes.js';
 
 // Load environment variables from .env
 dotenv.config();
@@ -18,6 +19,7 @@ app.use(cookieParser());
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/customers', customerRoutes);
 
 // Health Check Endpoint (Verifies server and database connection)
 app.get('/health', async (req, res) => {
