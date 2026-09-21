@@ -79,6 +79,33 @@ export const handleLogin = async (req, res) => {
   }
 };
 
+export const handleTechnicianLogin = async (req, res) => {
+  try {
+    const validationResult = loginSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Validation failed',
+        errors: validationResult.error.flatten().fieldErrors,
+      });
+    }
+
+    const result = await authService.loginTechnician(validationResult.data);
+    res.cookie('refreshToken', result.refreshToken, getCookieOptions());
+    return res.status(200).json({
+      status: 'success',
+      message: 'Technician authentication successful',
+      data: { user: result.user, accessToken: result.accessToken },
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      status: 'error',
+      message: error.message || 'Internal server error during technician login',
+    });
+  }
+};
+
 
 export const handleRefresh = async (req, res) => {
   try {

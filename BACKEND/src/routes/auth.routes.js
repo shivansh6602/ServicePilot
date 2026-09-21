@@ -3,6 +3,7 @@ import {
   handleRegister,
   handleRegisterTenant,
   handleLogin,
+  handleTechnicianLogin,
   handleRefresh,
   handleLogout,
 } from '../controllers/auth.controller.js';
@@ -16,6 +17,7 @@ router.post('/register-tenant', handleRegisterTenant);
 
 // Endpoint for user login
 router.post('/login', handleLogin);
+router.post('/technician/login', handleTechnicianLogin);
 
 // Endpoint for refreshing short-lived access token using httpOnly refresh cookie
 router.post('/refresh', handleRefresh);
