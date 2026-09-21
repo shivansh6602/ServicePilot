@@ -124,6 +124,32 @@ export const login = async ({ email, password }) => {
   };
 };
 
+export const loginTechnician = async ({ email, password }) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: {
+      business: {
+        select: { id: true, name: true },
+      },
+    },
+  });
+
+  // Use the same non-enumerating credential response for absent and wrong-role accounts.
+  if (!user || user.role !== 'TECHNICIAN' || !(await bcrypt.compare(password, user.passwordHash))) {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const payload = { userId: user.id, businessId: user.businessId, role: user.role };
+  const { passwordHash: _, ...safeUser } = user;
+  return {
+    user: safeUser,
+    accessToken: generateAccessToken(payload),
+    refreshToken: generateRefreshToken(payload),
+  };
+};
+
 
 export const refreshAccessToken = async (refreshToken) => {
   if (!refreshToken) {

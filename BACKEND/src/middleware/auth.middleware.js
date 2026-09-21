@@ -17,11 +17,7 @@ export const authenticateToken = (req, res, next) => {
     const decoded = jwt.verify(token, secret);
 
 
-    req.user = {
-      userId: decoded.userId,
-      businessId: decoded.businessId,
-      role: decoded.role,
-    };
+    req.user = decoded;
 
     return next();
   } catch (error) {
