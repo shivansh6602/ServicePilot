@@ -6,6 +6,7 @@ import prisma from './config/prisma.js';
 import authRoutes from './routes/auth.routes.js';
 import customerRoutes from './routes/customer.routes.js';
 import technicianRoutes from './routes/technician.routes.js';
+import jobRoutes from './routes/job.routes.js';
 
 // Load environment variables from .env
 dotenv.config();
@@ -22,6 +23,7 @@ app.use(cookieParser());
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/technicians', technicianRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // Health Check Endpoint (Verifies server and database connection)
 app.get('/health', async (req, res) => {
