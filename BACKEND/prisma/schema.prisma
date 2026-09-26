@@ -30,6 +30,11 @@ enum PaymentMethod {
   OTHER
 }
 
+enum JobPhotoType {
+  BEFORE
+  AFTER
+}
+
 model Business {
   id        String   @id @default(uuid())
   name      String
@@ -90,6 +95,10 @@ model Job {
   scheduledAt        DateTime?
   serviceCharge      Float     @default(0.0)
   discount           Float     @default(0.0)
+  problemFound       String?
+  workPerformed      String?
+  workNotes          String?
+  completionNotes    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -187,6 +196,7 @@ model Tip {
 model JobPhoto {
   id           String   @id @default(uuid())
   jobId        String
+  type         JobPhotoType
   photoUrl     String
   caption      String?
   uploadedById String?

@@ -125,6 +125,82 @@ async function runJobTests() {
     if (rolledBackJob.status !== 'ASSIGNED' || rolledBackHistory !== 0) throw new Error('Status update was not rolled back with failed history');
     console.log('Passed');
 
+    console.log('Test 6: completion persists service details atomically for the assigned technician only');
+    const completionJob = await prisma.job.create({
+      data: {
+        businessId: tenantA.business.id, customerId: customerA.id, technicianId: technicianA.id,
+        status: 'IN_PROGRESS', problemDescription: 'Completion test',
+      },
+    });
+    const completionPayload = {
+      problemFound: 'Worn ignition switch',
+      workPerformed: 'Replaced the ignition switch and tested the system',
+      workNotes: 'System starts normally after repair',
+      completionNotes: 'Customer advised to monitor the unit',
+      parts: [{ name: 'Ignition switch', quantity: 1, unitCost: 45.5 }],
+      charges: [{ title: 'Emergency call-out', amount: 25 }],
+      photos: [
+        { type: 'BEFORE', photoUrl: 'https://example.com/photos/before.jpg', caption: 'Original switch' },
+        { type: 'AFTER', photoUrl: 'https://example.com/photos/after.jpg', caption: 'Replacement installed' },
+      ],
+    };
+    const unauthenticatedCompletion = await request(`${baseUrl}/${completionJob.id}/complete`, null, { method: 'PATCH', body: JSON.stringify(completionPayload) });
+    if (unauthenticatedCompletion.status !== 401) throw new Error('Unauthenticated completion was allowed');
+    const invalidCompletion = await request(`${baseUrl}/${completionJob.id}/complete`, technicianAToken, {
+      method: 'PATCH', body: JSON.stringify({ ...completionPayload, parts: [{ ...completionPayload.parts[0], quantity: 0 }] }),
+    });
+    if (invalidCompletion.status !== 400) throw new Error(`Invalid completion input expected 400, got ${invalidCompletion.status}`);
+    const wrongTechnician = await request(`${baseUrl}/${completionJob.id}/complete`, technicianA2Token, { method: 'PATCH', body: JSON.stringify(completionPayload) });
+    if (wrongTechnician.status !== 403) throw new Error(`Another technician completion expected 403, got ${wrongTechnician.status}`);
+    const crossBusiness = await request(`${baseUrl}/${completionJob.id}/complete`, technicianBToken, { method: 'PATCH', body: JSON.stringify(completionPayload) });
+    if (crossBusiness.status !== 404) throw new Error(`Cross-business completion expected 404, got ${crossBusiness.status}`);
+    const completionResponse = await request(`${baseUrl}/${completionJob.id}/complete`, technicianAToken, { method: 'PATCH', body: JSON.stringify(completionPayload) });
+    const completionData = await completionResponse.json();
+    if (completionResponse.status !== 200 || completionData.data.job.status !== 'COMPLETED' || completionData.data.job.problemFound !== completionPayload.problemFound) {
+      throw new Error(`Completion failed: ${JSON.stringify(completionData)}`);
+    }
+    if (completionData.data.job.parts.length !== 1 || completionData.data.job.charges.length !== 1 || completionData.data.job.photos.length !== 2) {
+      throw new Error('Completion line items or photos were not returned');
+    }
+    const savedPhotos = await prisma.jobPhoto.findMany({ where: { jobId: completionJob.id }, orderBy: { createdAt: 'asc' } });
+    if (savedPhotos.map((photo) => photo.type).sort().join(',') !== 'AFTER,BEFORE' || savedPhotos.some((photo) => photo.uploadedById !== technicianA.id)) {
+      throw new Error('Before/after photos were not persisted correctly');
+    }
+    const completionHistory = await prisma.jobStatusHistory.findFirst({ where: { jobId: completionJob.id, toStatus: 'COMPLETED' } });
+    if (!completionHistory || completionHistory.fromStatus !== 'IN_PROGRESS' || completionHistory.changedById !== technicianA.id) {
+      throw new Error('Completion history is incorrect');
+    }
+    console.log('Passed');
+
+    console.log('Test 7: a failed completion transaction leaves no partial service record');
+    const failedCompletionJob = await prisma.job.create({
+      data: {
+        businessId: tenantA.business.id, customerId: customerA.id, technicianId: technicianA.id,
+        status: 'IN_PROGRESS', problemDescription: 'Completion rollback test',
+      },
+    });
+    try {
+      await jobService.completeJob(tenantA.business.id, { userId: '00000000-0000-0000-0000-000000000000', role: 'OWNER' }, failedCompletionJob.id, {
+        problemFound: 'Fault found', workPerformed: 'Work completed', workNotes: undefined, completionNotes: undefined,
+        parts: [{ name: 'Replacement part', quantity: 1, unitCost: 10 }],
+        charges: [{ title: 'Labour', amount: 20 }], photos: [],
+      });
+      throw new Error('Expected completion history foreign-key failure');
+    } catch (err) {
+      if (err.message === 'Expected completion history foreign-key failure') throw err;
+    }
+    const failedCompletion = await prisma.job.findUnique({ where: { id: failedCompletionJob.id } });
+    const [failedParts, failedCharges, failedPhotos, failedHistory] = await Promise.all([
+      prisma.jobPart.count({ where: { jobId: failedCompletionJob.id } }),
+      prisma.jobCharge.count({ where: { jobId: failedCompletionJob.id } }),
+      prisma.jobPhoto.count({ where: { jobId: failedCompletionJob.id } }),
+      prisma.jobStatusHistory.count({ where: { jobId: failedCompletionJob.id } }),
+    ]);
+    if (failedCompletion.status !== 'IN_PROGRESS' || failedCompletion.problemFound !== null || failedParts || failedCharges || failedPhotos || failedHistory) {
+      throw new Error('Failed completion left partial data behind');
+    }
+    console.log('Passed');
+
     console.log('\nAll Phase 5 Job Workflow integration tests passed.');
   } catch (err) {
     console.error(`\nJob test suite failed: ${err.message}`);

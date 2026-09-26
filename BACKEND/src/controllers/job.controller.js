@@ -1,6 +1,6 @@
 import * as jobService from '../services/job.service.js';
 import {
-  assignTechnicianSchema, createJobSchema, jobIdSchema, updateJobStatusSchema,
+  assignTechnicianSchema, completeJobSchema, createJobSchema, jobIdSchema, updateJobStatusSchema,
 } from '../validators/job.validator.js';
 
 const validationError = (res, result) => res.status(400).json({
@@ -40,6 +40,16 @@ export const handleUpdateJobStatus = async (req, res) => {
   if (!parsed.success) return validationError(res, parsed);
   try {
     const job = await jobService.updateJobStatus(req.user.businessId, req.user, jobId, parsed.data.status);
+    return res.status(200).json({ status: 'success', data: { job } });
+  } catch (err) { return handleError(res, err); }
+};
+
+export const handleCompleteJob = async (req, res) => {
+  const jobId = parseJobId(req, res); if (!jobId) return undefined;
+  const parsed = completeJobSchema.safeParse(req.body);
+  if (!parsed.success) return validationError(res, parsed);
+  try {
+    const job = await jobService.completeJob(req.user.businessId, req.user, jobId, parsed.data);
     return res.status(200).json({ status: 'success', data: { job } });
   } catch (err) { return handleError(res, err); }
 };

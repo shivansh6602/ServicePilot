@@ -15,6 +15,7 @@ export const allowedTransitions = Object.freeze({
 const jobSelect = {
   id: true, businessId: true, customerId: true, technicianId: true, status: true,
   problemDescription: true, scheduledAt: true, serviceCharge: true, discount: true,
+  problemFound: true, workPerformed: true, workNotes: true, completionNotes: true,
   createdAt: true, updatedAt: true,
 };
 
@@ -87,4 +88,56 @@ export const updateJobStatus = async (businessId, actor, jobId, nextStatus) => p
     data: { jobId, fromStatus: job.status, toStatus: nextStatus, changedById: actor.userId },
   });
   return tx.job.findFirst({ where: { id: jobId, businessId }, select: jobSelect });
+});
+
+export const completeJob = async (businessId, actor, jobId, data) => prisma.$transaction(async (tx) => {
+  const job = await tx.job.findFirst({
+    where: { id: jobId, businessId },
+    select: { id: true, status: true, technicianId: true },
+  });
+  if (!job) throw notFoundError();
+  if (actor.role === 'TECHNICIAN' && job.technicianId !== actor.userId) {
+    throw error('Forbidden. Technicians may only operate on their assigned jobs', 403);
+  }
+  if (!allowedTransitions[job.status]?.includes('COMPLETED')) {
+    throw conflictError(`Invalid job status transition from ${job.status} to COMPLETED`);
+  }
+
+  // This conditional write preserves the workflow state under concurrent completion attempts.
+  const result = await tx.job.updateMany({
+    where: { id: jobId, businessId, status: job.status },
+    data: {
+      status: 'COMPLETED',
+      problemFound: data.problemFound,
+      workPerformed: data.workPerformed,
+      workNotes: data.workNotes,
+      completionNotes: data.completionNotes,
+    },
+  });
+  if (result.count === 0) throw conflictError('Job was modified by another request');
+
+  if (data.parts.length) {
+    await tx.jobPart.createMany({ data: data.parts.map((part) => ({ jobId, ...part })) });
+  }
+  if (data.charges.length) {
+    await tx.jobCharge.createMany({ data: data.charges.map((charge) => ({ jobId, ...charge })) });
+  }
+  if (data.photos.length) {
+    await tx.jobPhoto.createMany({
+      data: data.photos.map((photo) => ({ jobId, uploadedById: actor.userId, ...photo })),
+    });
+  }
+  await tx.jobStatusHistory.create({
+    data: { jobId, fromStatus: job.status, toStatus: 'COMPLETED', changedById: actor.userId },
+  });
+
+  return tx.job.findFirst({
+    where: { id: jobId, businessId },
+    select: {
+      ...jobSelect,
+      parts: true,
+      charges: true,
+      photos: true,
+    },
+  });
 });
