@@ -11,6 +11,7 @@
     "test:customers": "node src/tests/customers.test.js",
     "test:technicians": "node src/tests/technicians.test.js",
     "test:jobs": "node src/tests/jobs.test.js",
+    "test:payments": "node src/tests/payments.test.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
