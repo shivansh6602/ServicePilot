@@ -25,8 +25,8 @@ enum JobStatus {
 
 enum PaymentMethod {
   CASH
+  UPI
   CARD
-  ONLINE
   OTHER
 }
 
