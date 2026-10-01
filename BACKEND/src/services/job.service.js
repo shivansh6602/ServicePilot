@@ -1,6 +1,6 @@
 import prisma from '../config/prisma.js';
 
-// CONFIRMED and PAID are intentionally left to later workflow phases.
+// CONFIRMED remains reserved for a later workflow phase; PAID is reached atomically by Phase 7 payment recording.
 export const allowedTransitions = Object.freeze({
   REQUESTED: ['ASSIGNED'],
   ASSIGNED: ['ON_THE_WAY'],
