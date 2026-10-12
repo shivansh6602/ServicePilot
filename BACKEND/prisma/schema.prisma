@@ -47,19 +47,19 @@ model Business {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  businessId   String
-  email        String   @unique
-  passwordHash String
+  id              String   @id @default(uuid())
+  businessId      String
+  email           String   @unique
+  passwordHash    String
   name            String
   role            Role
   profilePhotoUrl String?
   createdAt       DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt       DateTime @updatedAt
 
-  business      Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  assignedJobs  Job[]              @relation("TechnicianJobs")
-  statusChanges JobStatusHistory[]
+  business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  assignedJobs   Job[]              @relation("TechnicianJobs")
+  statusChanges  JobStatusHistory[]
   uploadedPhotos JobPhoto[]
 
   // Scoped index for tenant user lookups
@@ -101,16 +101,18 @@ model Job {
   completionNotes    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+ 
 
-  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  technician User?     @relation("TechnicianJobs", fields: [technicianId], references: [id], onDelete: SetNull)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  technician User?    @relation("TechnicianJobs", fields: [technicianId], references: [id], onDelete: SetNull)
 
   statusHistory JobStatusHistory[]
   parts         JobPart[]
   charges       JobCharge[]
   payments      Payment[]
   photos        JobPhoto[]
+  customerAccessTokens CustomerAccessToken[]
   review        Review?
   tip           Tip?
   signature     Signature?
@@ -194,13 +196,13 @@ model Tip {
 }
 
 model JobPhoto {
-  id           String   @id @default(uuid())
+  id           String       @id @default(uuid())
   jobId        String
   type         JobPhotoType
   photoUrl     String
   caption      String?
   uploadedById String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime     @default(now())
 
   job        Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
   uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -216,4 +218,17 @@ model Signature {
   signedAt     DateTime @default(now())
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+model CustomerAccessToken {
+  id String @id @default(uuid())
+  tokenHash String @unique
+  jobId String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([expiresAt])
 }
