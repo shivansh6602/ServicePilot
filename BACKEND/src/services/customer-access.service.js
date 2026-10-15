@@ -10,37 +10,42 @@ const createError = (message, statusCode) =>
 const hashToken = (token) =>
   createHash('sha256').update(token).digest('hex');
 
-export const issueCustomerAccessToken = async (jobId) => {
-  const job = await prisma.job.findUnique({
-    where: { id: jobId },
-    select: { id: true },
-  });
 
-  if (!job) {
-    throw createError('Job not found', 404);
-  }
-
-  // Return the raw token once; persist only its SHA-256 hash.
+export const issueCustomerAccessToken = async (businessId, jobId) => {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = hashToken(token);
   const expiresAt = new Date(
     Date.now() + ACCESS_TOKEN_DAYS * 24 * 60 * 60 * 1000,
   );
 
-  await prisma.customerAccessToken.create({
-    data: {
-      tokenHash,
-      jobId: job.id,
-      expiresAt,
-    },
+  await prisma.$transaction(async (tx) => {
+    const job = await tx.job.findFirst({
+      where: { id: jobId, businessId },
+      select: { id: true },
+    });
+
+    if (!job) {
+      throw createError('Job not found', 404);
+    }
+   
+    await tx.customerAccessToken.updateMany({
+      where: { jobId: job.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    await tx.customerAccessToken.create({
+      data: {
+        tokenHash,
+        jobId: job.id,
+        expiresAt,
+      },
+    });
   });
 
-  return {
-    token,
-    jobId: job.id,
-    expiresAt,
-  };
+ 
+  return { token, expiresAt };
 };
+
 
 export const validateCustomerAccessToken = async (token) => {
   if (typeof token !== 'string' || token.length === 0) {
