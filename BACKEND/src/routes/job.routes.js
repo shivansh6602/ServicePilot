@@ -3,6 +3,7 @@ import { authenticateToken, requireRole } from '../middleware/auth.middleware.js
 import {
   handleAssignTechnician, handleCompleteJob, handleCreateJob, handleGetReceipt, handleRecordPayment, handleUpdateJobStatus,
 } from '../controllers/job.controller.js';
+import { handleIssueCustomerAccessToken } from '../controllers/customer-access.controller.js';
 
 const router = Router();
 router.use(authenticateToken);
@@ -12,5 +13,9 @@ router.patch('/:id/status', requireRole('OWNER', 'TECHNICIAN'), handleUpdateJobS
 router.patch('/:id/complete', requireRole('OWNER', 'TECHNICIAN'), handleCompleteJob);
 router.post('/:id/payments', requireRole('OWNER'), handleRecordPayment);
 router.get('/:id/receipt', requireRole('OWNER'), handleGetReceipt);
-
+router.post(
+  '/:id/customer-access',
+  requireRole('OWNER'),
+  handleIssueCustomerAccessToken,
+);
 export default router;

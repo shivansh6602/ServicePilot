@@ -7,7 +7,7 @@ import authRoutes from './routes/auth.routes.js';
 import customerRoutes from './routes/customer.routes.js';
 import technicianRoutes from './routes/technician.routes.js';
 import jobRoutes from './routes/job.routes.js';
-
+import customerAccessRoutes from './routes/customer-access.routes.js';
 // Load environment variables from .env
 dotenv.config();
 
@@ -24,6 +24,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/customer-portal', customerAccessRoutes);
 
 // Health Check Endpoint (Verifies server and database connection)
 app.get('/health', async (req, res) => {
