@@ -10,6 +10,41 @@ const createError = (message, statusCode) =>
 const hashToken = (token) =>
   createHash('sha256').update(token).digest('hex');
 
+// This is deliberately separate from the owner receipt shape. A customer-link
+// token is scoped to one job, so never return tenant, technician, payment, or
+// customer-record fields from this public read.
+const customerPortalJobSelect = {
+  id: true,
+  status: true,
+  problemDescription: true,
+  scheduledAt: true,
+  serviceCharge: true,
+  discount: true,
+  problemFound: true,
+  workPerformed: true,
+  completionNotes: true,
+  parts: {
+    select: {
+      name: true,
+      quantity: true,
+      unitCost: true,
+    },
+  },
+  charges: {
+    select: {
+      title: true,
+      amount: true,
+    },
+  },
+  photos: {
+    select: {
+      type: true,
+      photoUrl: true,
+      caption: true,
+    },
+  },
+};
+
 
 export const issueCustomerAccessToken = async (businessId, jobId) => {
   const token = randomBytes(32).toString('base64url');
@@ -74,6 +109,14 @@ export const validateCustomerAccessToken = async (token) => {
     jobId: storedToken.jobId,
   };
 };
+
+// `jobId` comes only from a validated CustomerAccessToken in the middleware.
+// The token has a foreign key to Job, so this cannot be used to select another
+// business or customer job.
+export const getCustomerJob = (jobId) => prisma.job.findFirst({
+  where: { id: jobId },
+  select: customerPortalJobSelect,
+});
 
 export const revokeCustomerAccessTokens = async (jobId) => {
   const result = await prisma.customerAccessToken.updateMany({
