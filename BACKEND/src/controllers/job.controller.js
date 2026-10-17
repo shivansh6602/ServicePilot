@@ -98,9 +98,21 @@ export const handleRecordPayment = async (req, res) => {
   const jobId = parseJobId(req, res); if (!jobId) return undefined;
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return validationError(res, parsed);
+  const idempotencyKey = idempotencyKeySchema.safeParse(req.get('Idempotency-Key'));
+  if (!idempotencyKey.success) {
+    return res.status(400).json({
+      status: 'fail',
+      message: idempotencyKey.error.issues[0].message,
+    });
+  }
   try {
-    const result = await paymentService.recordPayment(req.user.businessId, req.user.userId, jobId, parsed.data);
-    return res.status(201).json({ status: 'success', data: result });
+    const result = await paymentService.recordPayment(
+      req.user.businessId,
+      req.user.userId,
+      jobId,
+      { ...parsed.data, idempotencyKey: idempotencyKey.data },
+    );
+    return res.status(result.idempotent ? 200 : 201).json({ status: 'success', data: result });
   } catch (err) { return handleError(res, err); }
 };
 

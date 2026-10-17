@@ -19,9 +19,93 @@ const jobSelect = {
   createdAt: true, updatedAt: true,
 };
 
+const jobListSelect = {
+  id: true,
+  status: true,
+  problemDescription: true,
+  scheduledAt: true,
+  serviceCharge: true,
+  discount: true,
+  createdAt: true,
+  updatedAt: true,
+  customer: {
+    select: { id: true, name: true, phone: true, address: true },
+  },
+  technician: {
+    select: { id: true, name: true },
+  },
+};
+
+const jobDetailSelect = {
+  ...jobListSelect,
+  problemFound: true,
+  workPerformed: true,
+  completionNotes: true,
+  parts: {
+    select: { id: true, name: true, quantity: true, unitCost: true },
+  },
+  charges: {
+    select: { id: true, title: true, amount: true },
+  },
+  photos: {
+    select: { id: true, type: true, photoUrl: true, caption: true, createdAt: true },
+  },
+};
+
 const error = (message, statusCode) => Object.assign(new Error(message), { statusCode });
 const notFoundError = () => error('Job not found', 404);
 const conflictError = (message) => error(message, 409);
+
+export const listOwnerJobs = (businessId) => prisma.job.findMany({
+  where: { businessId },
+  select: jobListSelect,
+  orderBy: { createdAt: 'desc' },
+});
+
+export const getOwnerJob = async (businessId, jobId) => {
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, businessId },
+    select: jobDetailSelect,
+  });
+  if (!job) throw notFoundError();
+  return job;
+};
+
+export const getJobStatusHistory = async (businessId, jobId) => {
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, businessId },
+    select: { id: true },
+  });
+  if (!job) throw notFoundError();
+
+  return prisma.jobStatusHistory.findMany({
+    where: { jobId },
+    select: {
+      id: true,
+      fromStatus: true,
+      toStatus: true,
+      reason: true,
+      createdAt: true,
+      changedBy: { select: { id: true, name: true, role: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+};
+
+export const listAssignedJobs = (businessId, technicianId) => prisma.job.findMany({
+  where: { businessId, technicianId },
+  select: jobListSelect,
+  orderBy: { createdAt: 'desc' },
+});
+
+export const getAssignedJob = async (businessId, technicianId, jobId) => {
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, businessId, technicianId },
+    select: jobDetailSelect,
+  });
+  if (!job) throw notFoundError();
+  return job;
+};
 
 export const createJob = async (businessId, data) => {
   const customer = await prisma.customer.findFirst({
