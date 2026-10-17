@@ -7,3 +7,8 @@ export const paymentSchema = z.object({
   }),
   notes: z.string().trim().max(2000, 'Notes must be at most 2000 characters').optional(),
 }).strict();
+
+export const idempotencyKeySchema = z.string()
+  .trim()
+  .min(1, 'Idempotency-Key header is required')
+  .max(255, 'Idempotency-Key header must be at most 255 characters');

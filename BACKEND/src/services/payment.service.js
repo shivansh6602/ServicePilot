@@ -19,6 +19,14 @@ const paymentSelect = {
   createdAt: true,
 };
 
+const idempotencyPaymentSelect = {
+  ...paymentSelect,
+  jobId: true,
+  idempotencyKey: true,
+};
+
+const publicPayment = ({ jobId, idempotencyKey, ...payment }) => payment;
+
 const receiptJobSelect = {
   id: true,
   businessId: true,
@@ -153,6 +161,33 @@ export const recordPayment = async (
     // Serialise payments for this job, so two concurrent requests cannot both spend the same pending balance.
     //Think of Job 123 as having a tiny "payment processing" lock.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`;
+    // Serialise retries sharing a request key even if a malformed/reused key targets another job.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${data.idempotencyKey}))`;
+
+    const existingPayment = await tx.payment.findUnique({
+      where: { idempotencyKey: data.idempotencyKey },
+      select: idempotencyPaymentSelect,
+    });
+    if (existingPayment) {
+      const sameRequest = existingPayment.jobId === jobId
+        && existingPayment.amount === data.amount
+        && existingPayment.paymentMethod === data.paymentMethod
+        && existingPayment.notes === (data.notes ?? null);
+      if (!sameRequest) {
+        throw conflictError('Idempotency key was already used for a different payment request');
+      }
+      const savedJob = await tx.job.findFirst({
+        where: { id: jobId, businessId },
+        select: receiptJobSelect,
+      });
+      if (!savedJob) throw notFoundError();
+      return {
+        payment: publicPayment(existingPayment),
+        receipt: buildReceipt(savedJob),
+        idempotent: true,
+      };
+    }
+
     const job = await tx.job.findFirst({
       where: { id: jobId, businessId },
       select: receiptJobSelect,
@@ -174,6 +209,7 @@ export const recordPayment = async (
     const payment = await tx.payment.create({
       data: {
         jobId,
+        idempotencyKey: data.idempotencyKey,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
         notes: data.notes,
@@ -212,7 +248,8 @@ export const recordPayment = async (
       select: receiptJobSelect,
     });
     return {
-      payment,
-      receipt: buildReceipt(savedJob),
-    };
+  payment: publicPayment(payment),
+  receipt: buildReceipt(savedJob),
+  idempotent: false,
+};
   });
