@@ -11,9 +11,14 @@ const app = express();
 app.use(express.json());
 app.use('/api/jobs', jobRoutes);
 
-const request = (url, token, options = {}) => fetch(url, {
+const request = (url, token, { idempotencyKey, ...options } = {}) => fetch(url, {
   ...options,
-  headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  headers: {
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(url.includes('/payments') ? { 'Idempotency-Key': idempotencyKey || `test-${Date.now()}-${Math.random()}` } : {}),
+    ...options.headers,
+  },
 });
 
 const createOwner = async (name) => {
@@ -62,7 +67,41 @@ async function runPaymentTests() {
     if (!paymentHistory || paymentHistory.fromStatus !== 'COMPLETED' || paymentHistory.changedById !== tenantA.user.id) throw new Error('Final payment was not status-audited');
     console.log('Passed');
 
-    console.log('Test 2: all supported payment methods are stored');
+    console.log('Test 2: payment retries are idempotent and key reuse with a changed request is rejected');
+    const retryJob = await createCompletedJob();
+    const retryKey = `retry-${Date.now()}-${Math.random()}`;
+    const retryBody = JSON.stringify({ amount: 40, paymentMethod: 'CARD', notes: 'First instalment' });
+    const initial = await request(`${baseUrl}/${retryJob.id}/payments`, tenantA.accessToken, {
+      method: 'POST', body: retryBody, idempotencyKey: retryKey,
+    });
+    const retry = await request(`${baseUrl}/${retryJob.id}/payments`, tenantA.accessToken, {
+      method: 'POST', body: retryBody, idempotencyKey: retryKey,
+    });
+    const changedRetry = await request(`${baseUrl}/${retryJob.id}/payments`, tenantA.accessToken, {
+      method: 'POST', body: JSON.stringify({ amount: 41, paymentMethod: 'CARD', notes: 'First instalment' }), idempotencyKey: retryKey,
+    });
+    const retryData = await retry.json();
+    if (initial.status !== 201 || retry.status !== 200 || !retryData.data.idempotent || changedRetry.status !== 409
+      || await prisma.payment.count({ where: { jobId: retryJob.id } }) !== 1) {
+      throw new Error('Payment retry was not safely idempotent');
+    }
+    const concurrentJob = await createCompletedJob();
+    const concurrentKey = `concurrent-${Date.now()}-${Math.random()}`;
+    const concurrentRequests = await Promise.all([
+      request(`${baseUrl}/${concurrentJob.id}/payments`, tenantA.accessToken, {
+        method: 'POST', body: JSON.stringify({ amount: 40, paymentMethod: 'UPI' }), idempotencyKey: concurrentKey,
+      }),
+      request(`${baseUrl}/${concurrentJob.id}/payments`, tenantA.accessToken, {
+        method: 'POST', body: JSON.stringify({ amount: 40, paymentMethod: 'UPI' }), idempotencyKey: concurrentKey,
+      }),
+    ]);
+    if (!concurrentRequests.every((response) => [200, 201].includes(response.status))
+      || await prisma.payment.count({ where: { jobId: concurrentJob.id } }) !== 1) {
+      throw new Error('Concurrent duplicate payment requests created duplicate records');
+    }
+    console.log('Passed');
+
+    console.log('Test 3: all supported payment methods are stored');
     for (const method of ['CASH', 'UPI', 'CARD', 'OTHER']) {
       const methodJob = await createCompletedJob();
       const response = await request(`${baseUrl}/${methodJob.id}/payments`, tenantA.accessToken, { method: 'POST', body: JSON.stringify({ amount: 1, paymentMethod: method }) });
@@ -71,8 +110,12 @@ async function runPaymentTests() {
     }
     console.log('Passed');
 
-    console.log('Test 3: invalid values, client totals, overpayment, and non-completed jobs are rejected');
+    console.log('Test 4: invalid values, client totals, overpayment, and non-completed jobs are rejected');
     const invalidJob = await createCompletedJob();
+    const missingIdempotencyKey = await request(`${baseUrl}/${invalidJob.id}/payments`, tenantA.accessToken, {
+      method: 'POST', body: JSON.stringify({ amount: 1, paymentMethod: 'CASH' }), headers: { 'Idempotency-Key': '' },
+    });
+    if (missingIdempotencyKey.status !== 400) throw new Error('Missing idempotency key was accepted');
     for (const body of [
       { amount: -1, paymentMethod: 'CASH' }, { amount: 0, paymentMethod: 'CASH' },
       { amount: 1, paymentMethod: 'ONLINE' }, { amount: 1, paymentMethod: 'CASH', paidAmount: 1 },
@@ -87,7 +130,7 @@ async function runPaymentTests() {
     if (premature.status !== 409) throw new Error(`Premature payment expected 409, got ${premature.status}`);
     console.log('Passed');
 
-    console.log('Test 4: owner-only and tenant-scoped access are enforced');
+    console.log('Test 5: owner-only and tenant-scoped access are enforced');
     const accessJob = await createCompletedJob();
     const unauthenticated = await request(`${baseUrl}/${accessJob.id}/payments`, null, { method: 'POST', body: JSON.stringify({ amount: 1, paymentMethod: 'CASH' }) });
     const technician = await request(`${baseUrl}/${accessJob.id}/payments`, techAToken, { method: 'POST', body: JSON.stringify({ amount: 1, paymentMethod: 'CASH' }) });
@@ -99,10 +142,10 @@ async function runPaymentTests() {
     if ((await request(`${baseUrl}/${tenantBJob.id}/receipt`, tenantA.accessToken)).status !== 404) throw new Error('Cross-business receipt was exposed');
     console.log('Passed');
 
-    console.log('Test 5: payment and PAID history roll back together on failure');
+    console.log('Test 6: payment and PAID history roll back together on failure');
     const rollbackJob = await createCompletedJob();
     try {
-      await paymentService.recordPayment(tenantA.business.id, '00000000-0000-0000-0000-000000000000', rollbackJob.id, { amount: 140, paymentMethod: 'OTHER' });
+      await paymentService.recordPayment(tenantA.business.id, '00000000-0000-0000-0000-000000000000', rollbackJob.id, { amount: 140, paymentMethod: 'OTHER', idempotencyKey: `rollback-${Date.now()}-${Math.random()}` });
       throw new Error('Expected payment history foreign-key failure');
     } catch (err) {
       if (err.message === 'Expected payment history foreign-key failure') throw err;
