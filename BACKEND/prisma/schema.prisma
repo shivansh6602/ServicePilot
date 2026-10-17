@@ -166,6 +166,7 @@ model JobCharge {
 model Payment {
   id            String        @id @default(uuid())
   jobId         String
+  idempotencyKey String?       @unique
   amount        Float
   paymentMethod PaymentMethod @default(CASH)
   notes         String?
