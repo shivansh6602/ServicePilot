@@ -1,1 +1,8 @@
 ﻿# Repository-level ignore rules
+
+# Private project roadmaps
+/BACKEND/Roadmap.md
+/FRONTEND/Roadmap.md
+# Private project documentation
+/Roadmap.md
+/Agents.md
